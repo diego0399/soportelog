@@ -1,0 +1,5 @@
+{
+	// Cuando cambia el pom.xml, el IDE vuelve a leer el proyecto Maven por si solo
+	// (dependencias y carpetas de codigo) en lugar de esperar a que se le pida.
+	"java.configuration.updateBuildConfiguration": "automatic"
+}

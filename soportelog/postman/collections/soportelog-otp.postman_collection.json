@@ -1,0 +1,171 @@
+{
+	"info": {
+		"name": "Soportelog - Login con OTP",
+		"description": "Flujo de autenticacion por codigo OTP enviado al correo: pedir codigo, verificarlo, usar el JWT, renovarlo y manejar las sesiones.\n\nPon tu correo en la variable `email`. Copia el codigo recibido en la variable `code` antes de ejecutar el paso 2.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{ "key": "baseUrl", "value": "http://localhost:8080" },
+		{ "key": "email", "value": "tu-correo@ejemplo.com" },
+		{ "key": "code", "value": "" },
+		{ "key": "deviceName", "value": "Postman" },
+		{ "key": "token", "value": "" },
+		{ "key": "refreshToken", "value": "" },
+		{ "key": "sessionId", "value": "" }
+	],
+	"item": [
+		{
+			"name": "1. Solicitar codigo",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('responde 200', () => pm.response.to.have.status(200));",
+							"pm.test('informa expiracion y tiempo de reenvio', () => {",
+							"    const body = pm.response.json();",
+							"    pm.expect(body.expiresInSeconds).to.be.a('number');",
+							"    pm.expect(body.resendInSeconds).to.be.a('number');",
+							"});"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"body": { "mode": "raw", "raw": "{\n  \"email\": \"{{email}}\"\n}" },
+				"url": "{{baseUrl}}/api/auth/otp/request"
+			}
+		},
+		{
+			"name": "2. Verificar codigo",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('responde 200', () => pm.response.to.have.status(200));",
+							"pm.test('devuelve el token de acceso y el de renovacion', () => {",
+							"    const body = pm.response.json();",
+							"    pm.expect(body.accessToken).to.be.a('string').and.not.empty;",
+							"    pm.expect(body.refreshToken).to.be.a('string').and.not.empty;",
+							"    pm.collectionVariables.set('token', body.accessToken);",
+							"    pm.collectionVariables.set('refreshToken', body.refreshToken);",
+							"});"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"body": { "mode": "raw", "raw": "{\n  \"email\": \"{{email}}\",\n  \"code\": \"{{code}}\",\n  \"deviceName\": \"{{deviceName}}\"\n}" },
+				"url": "{{baseUrl}}/api/auth/otp/verify"
+			}
+		},
+		{
+			"name": "3. Mi usuario (protegido)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('responde 200 con el JWT', () => pm.response.to.have.status(200));",
+							"pm.test('es el usuario del correo verificado', () => {",
+							"    pm.expect(pm.response.json().email).to.eql(pm.variables.get('email').toLowerCase());",
+							"});"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+				"url": "{{baseUrl}}/api/users/me"
+			}
+		},
+		{
+			"name": "4. Renovar token de acceso",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('responde 200', () => pm.response.to.have.status(200));",
+							"pm.test('devuelve un token de acceso nuevo y su duracion', () => {",
+							"    const body = pm.response.json();",
+							"    pm.expect(body.accessToken).to.be.a('string').and.not.empty;",
+							"    pm.expect(body.expiresInSeconds).to.be.a('number');",
+							"    pm.collectionVariables.set('token', body.accessToken);",
+							"});"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [{ "key": "Content-Type", "value": "application/json" }],
+				"body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" },
+				"url": "{{baseUrl}}/api/auth/refresh"
+			}
+		},
+		{
+			"name": "5. Mis dispositivos",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('responde 200 con una lista', () => {",
+							"    pm.response.to.have.status(200);",
+							"    pm.expect(pm.response.json()).to.be.an('array').and.not.empty;",
+							"});",
+							"pm.test('exactamente una sesion es la actual', () => {",
+							"    pm.expect(pm.response.json().filter(s => s.current)).to.have.lengthOf(1);",
+							"});"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+				"url": "{{baseUrl}}/api/auth/sessions"
+			}
+		},
+		{
+			"name": "6. Cerrar la sesion de otro dispositivo",
+			"request": {
+				"description": "Pon en la variable sessionId el id de la sesion que quieres cerrar (sale en '5. Mis dispositivos').",
+				"method": "DELETE",
+				"header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+				"url": "{{baseUrl}}/api/auth/sessions/{{sessionId}}"
+			}
+		},
+		{
+			"name": "7. Cerrar sesion (este dispositivo)",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('responde 204 sin contenido', () => pm.response.to.have.status(204));"
+						]
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+				"url": "{{baseUrl}}/api/auth/logout"
+			}
+		}
+	]
+}
